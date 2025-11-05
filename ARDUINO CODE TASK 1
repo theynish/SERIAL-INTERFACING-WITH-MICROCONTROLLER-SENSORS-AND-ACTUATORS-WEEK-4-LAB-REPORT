@@ -1,0 +1,35 @@
+#include <Wire.h>
+#include <Servo.h>
+#include <MPU6050.h>
+
+MPU6050 mpu;
+Servo myServo;
+int servoPin = 9;
+
+void setup() {
+  Serial.begin(9600);
+  Wire.begin();
+  mpu.initialize();
+  myServo.attach(servoPin);
+  myServo.write(90); // center position
+}
+
+void loop() {
+  // Read accelerometer
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+
+  // Send accelerometer data to Python
+  Serial.print(ax); Serial.print(",");
+  Serial.println(ay);
+
+  // If Python sends an angle, move servo
+  if (Serial.available()) {
+    int angle = Serial.parseInt();
+    if (angle >= 0 && angle <= 180) {
+      myServo.write(angle);
+    }
+  }
+
+  delay(100);
+}
