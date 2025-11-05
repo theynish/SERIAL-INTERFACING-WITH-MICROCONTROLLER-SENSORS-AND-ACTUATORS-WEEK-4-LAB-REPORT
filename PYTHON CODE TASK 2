@@ -1,0 +1,86 @@
+import serial
+import time
+import math
+import keyboard  # for RFID input in USB mode
+
+# ---------------- CONFIG ----------------
+SERIAL_PORT = "COM3"       # 🔧 Change to match your Arduino COM port
+BAUD_RATE = 9600
+AUTHORIZED_UIDS = ["0009522418"]  # 🔧 Replace with your tag UID
+MOTION_THRESHOLD = 4000           # adjust sensitivity
+DETECTION_TIME = 3                # seconds to capture MPU data
+# ----------------------------------------
+
+def detect_circular_motion(ser, duration=DETECTION_TIME):
+    """Read MPU6050 data for a few seconds and check circular pattern."""
+    print("➡️ Move the MPU6050 in a circle...")
+    start_time = time.time()
+    xs, ys = [], []
+
+    while time.time() - start_time < duration:
+        line = ser.readline().decode(errors="ignore").strip()
+        if not line or "," not in line:
+            continue
+        parts = line.split(",")
+        try:
+            ax, ay = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        xs.append(ax)
+        ys.append(ay)
+
+    if len(xs) < 10:
+        print("⚠️ Not enough data for motion detection.")
+        return False
+
+    mean_x = sum(xs) / len(xs)
+    mean_y = sum(ys) / len(ys)
+    radii = [math.sqrt((x - mean_x)*2 + (y - mean_y)*2) for x, y in zip(xs, ys)]
+    avg_r = sum(radii) / len(radii)
+    dev = sum(abs(r - avg_r) for r in radii) / len(radii)
+    print(f"Average radius deviation = {dev:.1f}")
+
+    return dev < MOTION_THRESHOLD
+
+
+def main():
+    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+    print("🔹 System ready. Please scan your RFID tag...")
+
+    rfid_buffer = ""
+
+    try:
+        while True:
+            event = keyboard.read_event(suppress=False)
+
+            if event.event_type == keyboard.KEY_DOWN:
+                key = event.name
+
+                if key == "enter":
+                    uid = rfid_buffer.strip()
+                    rfid_buffer = ""
+                    print(f"\n🔖 RFID detected: {uid}")
+
+                    if uid in AUTHORIZED_UIDS:
+                        print("✅ Authorized tag! Perform circular motion...")
+                        if detect_circular_motion(ser):
+                            print("🟢 Motion verified → Access Granted!")
+                            ser.write(b"A")
+                        else:
+                            print("🔴 Motion incorrect → Access Denied.")
+                            ser.write(b"D")
+                    else:
+                        print("❌ Unauthorized tag → Access Denied.")
+                        ser.write(b"D")
+
+                elif len(key) == 1:  # Add each scanned character
+                    rfid_buffer += key
+
+    except KeyboardInterrupt:
+        print("\nProgram stopped.")
+    finally:
+        ser.close()
+
+
+if _name_ == "_main_":
+    main()
