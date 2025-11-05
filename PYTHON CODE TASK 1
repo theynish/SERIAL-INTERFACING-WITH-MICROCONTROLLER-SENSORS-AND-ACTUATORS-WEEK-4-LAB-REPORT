@@ -1,0 +1,44 @@
+import serial
+import matplotlib.pyplot as plt
+
+ser = serial.Serial('COM5', 9600, timeout=1)
+
+x_vals, y_vals = [], []
+plt.ion()
+fig, ax = plt.subplots()
+ax.set_xlim(-20000, 20000)
+ax.set_ylim(-20000, 20000)
+ax.set_xlabel("X-axis (MPU6050 Ax)")
+ax.set_ylabel("Y-axis (MPU6050 Ay)")
+ax.set_title("Real-Time Motion Tracking")
+line, = ax.plot([], [], 'r-o')
+
+def map_value(x, in_min, in_max, out_min, out_max):
+    """Map MPU value range to servo angle."""
+    return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
+
+while True:
+    try:
+        data = ser.readline().decode().strip()
+        if data:
+            values = data.split(',')
+            if len(values) >= 2:
+                ax_val = int(values[0])
+                ay_val = int(values[1])
+
+                x_vals.append(ax_val)
+                y_vals.append(ay_val)
+                line.set_data(x_vals, y_vals)
+                plt.draw()
+                plt.pause(0.05)
+
+                # Compute servo angle from X-axis tilt
+                servo_angle = map_value(ax_val, -17000, 17000, 0, 180)
+                servo_angle = max(0, min(180, servo_angle))
+
+                # Send servo command to Arduino
+                ser.write(f"{servo_angle}\n".encode())
+
+    except KeyboardInterrupt:
+        plt.ioff()
+        break
